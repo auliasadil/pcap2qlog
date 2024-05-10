@@ -303,7 +303,7 @@ export class ParserPCAP {
                     protocol_type: "QUIC",
                     reference_time: "" + referenceTime
                 },
-                event_fields: [IDefaultEventFieldNames.relative_time, IDefaultEventFieldNames.category, IDefaultEventFieldNames.event, IDefaultEventFieldNames.data],
+                // event_fields: [IDefaultEventFieldNames.relative_time, IDefaultEventFieldNames.category, IDefaultEventFieldNames.event, IDefaultEventFieldNames.data],
                 events: []
             };
 
