@@ -293,11 +293,11 @@ export class ParserPCAP {
                     type: VantagePointType.network,
                     flow: VantagePointType.client, // Perspective from which the trace is made, e.g. packet_sent from flow=client means that the client has sent a packet while packet_sent from flow=server means that the server sent it.
                 },
-                configuration: {
-                    time_offset: "0",
-                    time_units: "ms",
-                    original_uris: [ this.originalFileURI ],
-                },
+                // configuration: {
+                //     time_offset: "0",
+                //     time_units: "ms",
+                //     original_uris: [ this.originalFileURI ],
+                // },
                 common_fields: {
                     group_id: odcid, // Original destination connection id
                     protocol_type: "QUIC",
