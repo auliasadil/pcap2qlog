@@ -1,6 +1,6 @@
 import * as qlog from "@quictools/qlog-schema";
 import {PCAPUtil} from "../util/PCAPUtil";
-import { VantagePointType, EventField, EventCategory, TransportEventType, QuicFrame, QUICFrameTypeName, IAckFrame, IPaddingFrame, IPingFrame, IResetStreamFrame, IStopSendingFrame, ICryptoFrame, IStreamFrame, INewTokenFrame, IUnknownFrame, IMaxStreamDataFrame, IMaxStreamsFrame, IMaxDataFrame, IDataBlockedFrame, IStreamDataBlockedFrame, IStreamsBlockedFrame, INewConnectionIDFrame, IRetireConnectionIDFrame, IPathChallengeFrame, IPathResponseFrame, IConnectionCloseFrame, ErrorSpace, TransportError, ApplicationError, ConnectivityEventType, IEventSpinBitUpdated, IEventPacket, IEventPacketSent, ConnectionState, IEventTransportParametersSet, IEventConnectionStateUpdated, IDefaultEventFieldNames, CryptoError, PacketType } from "@quictools/qlog-schema";
+import { VantagePointType, IEvent, EventCategory, TransportEventType, QuicFrame, QUICFrameTypeName, IAckFrame, IPaddingFrame, IPingFrame, IResetStreamFrame, IStopSendingFrame, ICryptoFrame, IStreamFrame, INewTokenFrame, IUnknownFrame, IMaxStreamDataFrame, IMaxStreamsFrame, IMaxDataFrame, IDataBlockedFrame, IStreamDataBlockedFrame, IStreamsBlockedFrame, INewConnectionIDFrame, IRetireConnectionIDFrame, IPathChallengeFrame, IPathResponseFrame, IConnectionCloseFrame, ErrorSpace, TransportError, ApplicationError, ConnectivityEventType, IEventSpinBitUpdated, IEventPacket, IEventPacketSent, ConnectionState, IEventTransportParametersSet, IEventConnectionStateUpdated, IDefaultEventFieldNames, CryptoError, PacketType } from "@quictools/qlog-schema";
 import { pathToFileURL } from "url";
 
 interface TraceWrapper {
@@ -8,7 +8,7 @@ interface TraceWrapper {
 
     referenceTime:number,
     currentTime:number,
-    trailingEvents: EventField[][],
+    trailingEvents: IEvent[],
 
     currentClientCID:string|undefined, // DCID the server will use to send to the client
     currentServerCID:string|undefined, // DCID the client will use to send to the server
@@ -220,12 +220,23 @@ export class ParserPCAP {
 
 
                     // 2.4
-                    this.addEvent(trace!, [
-                        "" + trace!.currentTime,
-                        EventCategory.transport,
-                        transportEventType,
-                        evtData
-                    ]);
+                    // this.addEvent(trace!, [
+                    //     "" + trace!.currentTime,
+                    //     EventCategory.transport + ":" + transportEventType,
+                    //     evtData
+                    // ]);
+                    // IEvent {
+                    //     time: number,
+                    //     name: EventCategoryAndType,
+                    //     data: EventData,
+                    //     text?: string
+                    // }
+                    const event: qlog.IEvent = {
+                        time: trace!.currentTime,
+                        name: `${EventCategory.transport}:${transportEventType}`,
+                        data: evtData
+                    };
+                    this.addEvent(trace!, event);
                 
                 } // done processing single QUIC packet
 
@@ -327,12 +338,22 @@ export class ParserPCAP {
             this.traceMap.set( odcid!, wrapper );
 
             // First event = new connection
-            this.addEvent(wrapper, [
-                "0",
-                qlog.EventCategory.connectivity,
-                qlog.ConnectivityEventType.connection_started,
-                this.getConnectionInfo(firstRawEntry, firstPacketHeader) as qlog.IEventConnectionStarted,
-            ]);
+            // this.addEvent(wrapper, [
+            //     "0",
+            //     qlog.EventCategory.connectivity,
+            //     qlog.ConnectivityEventType.connection_started,
+            //     this.getConnectionInfo(firstRawEntry, firstPacketHeader) as qlog.IEventConnectionStarted,
+            // ]);
+            // this.addEvent(wrapper, [
+            //     "0",
+            //     qlog.EventCategory.connectivity + ":" + qlog.ConnectivityEventType.connection_started,
+            //     this.getConnectionInfo(firstRawEntry, firstPacketHeader) as qlog.IEventConnectionStarted,
+            // ]);
+            this.addEvent(wrapper, {
+                time: 0,
+                name: `${EventCategory.connectivity}:${ConnectivityEventType.connection_started}`,
+                data: this.getConnectionInfo(firstRawEntry, firstPacketHeader) as qlog.IEventConnectionStarted
+            });
 
             return wrapper;
         }
@@ -365,7 +386,7 @@ export class ParserPCAP {
 
         // Adds an event to the list of events
         // Also appends all trailing events immediately after the new event (see addTrailingEvents() function for more details)
-        protected addEvent(trace:TraceWrapper, event: EventField[]) {
+        protected addEvent(trace:TraceWrapper, event: IEvent) {
             trace.qlogTrace.events.push(event);
             trace.qlogTrace.events = trace.qlogTrace.events.concat(trace.trailingEvents);
             trace.trailingEvents = [];
@@ -377,7 +398,7 @@ export class ParserPCAP {
         //  The logical order to log these events is to log the packet received event before the connection close event
         //  This is however not always easy as the connection close event is discovered before the packet received event is fully completed
         // Therefore one is able to queue the connection close event first by calling addTrailingEvent(connectionCloseEvent) first when the connection close frame is discovered and later calling addEvent(packetReceivedEvent) when the packet received event is ready while still maintaining the expected order of events
-        protected addTrailingEvent(trace:TraceWrapper, event: EventField[]) {
+        protected addTrailingEvent(trace:TraceWrapper, event: IEvent) {
             trace.trailingEvents.push(event);
         }
 
@@ -420,27 +441,41 @@ export class ParserPCAP {
 
             if (trace.spinbit !== spinbitBool) {
                 trace.spinbit = spinbitBool;
-                this.addEvent(trace, [
-                    "" + trace.currentTime,
-                    EventCategory.connectivity,
-                    ConnectivityEventType.spin_bit_updated,
-                    {
-                        state: spinbitBool,
-                    } as IEventSpinBitUpdated,
-                ]);
+                // this.addEvent(trace, [
+                //     "" + trace.currentTime,
+                //     EventCategory.connectivity,
+                //     ConnectivityEventType.spin_bit_updated,
+                //     {
+                //         state: spinbitBool,
+                //     } as IEventSpinBitUpdated,
+                // ]);
+                this.addEvent(trace, {
+                    time: trace.currentTime,
+                    name: `${EventCategory.connectivity}:${ConnectivityEventType.spin_bit_updated}`,
+                    data: {
+                        state: spinbitBool
+                    } as IEventSpinBitUpdated
+                });
             }
         }
 
         protected checkVersionUpdate( trace:TraceWrapper, header:qlog.IPacketHeader ) {
             if ( header.version !== "" && header.version !== undefined && trace.currentVersion !== header.version ) {
-                this.addTrailingEvent(trace, [
-                    "" + trace.currentTime,
-                    EventCategory.transport,
-                    TransportEventType.parameters_set,
-                    {
+                // this.addTrailingEvent(trace, [
+                //     "" + trace.currentTime,
+                //     EventCategory.transport,
+                //     TransportEventType.parameters_set,
+                //     {
+                //         version: header.version
+                //     } as qlog.IEventTransportParametersSet
+                // ]);
+                this.addTrailingEvent(trace, {
+                    time: trace.currentTime,
+                    name: `${EventCategory.transport}:${TransportEventType.parameters_set}`,
+                    data: {
                         version: header.version
                     } as qlog.IEventTransportParametersSet
-                ]);
+                });
 
                 trace.currentVersion = header.version!;
             }
@@ -462,30 +497,46 @@ export class ParserPCAP {
                 // server issued this CID, so the client can use it to contact the server
                 if ( trace.serverIssuedCIDs.indexOf(header.dcid!) ) { // if undefined, it's just not initialized yet: skip
 
-                    this.addEvent(trace, [ // Log the change of cid
-                        "" + trace.currentTime,
-                        qlog.EventCategory.connectivity,
-                        qlog.ConnectivityEventType.connection_id_updated,
-                        {
+                    // this.addEvent(trace, [ // Log the change of cid
+                    //     "" + trace.currentTime,
+                    //     qlog.EventCategory.connectivity,
+                    //     qlog.ConnectivityEventType.connection_id_updated,
+                    //     {
+                    //         dst_old: trace.currentServerCID,
+                    //         dst_new: header.dcid,
+                    //     } as qlog.IEventConnectionIDUpdated,
+                    // ]);
+                    this.addEvent(trace, {
+                        time: trace.currentTime,
+                        name: `${EventCategory.connectivity}:${ConnectivityEventType.connection_id_updated}`,
+                        data: {
                             dst_old: trace.currentServerCID,
-                            dst_new: header.dcid,
-                        } as qlog.IEventConnectionIDUpdated,
-                    ]);
+                            dst_new: header.dcid
+                        } as qlog.IEventConnectionIDUpdated
+                    });
 
                     trace.currentServerCID = header.dcid; 
                 }
 
                 else if ( trace.clientIssuedCIDs.indexOf(header.dcid!) ) {
 
-                    this.addEvent(trace, [ // Log the change of cid
-                        "" + trace.currentTime,
-                        qlog.EventCategory.connectivity,
-                        qlog.ConnectivityEventType.connection_id_updated,
-                        {
+                    // this.addEvent(trace, [ // Log the change of cid
+                    //     "" + trace.currentTime,
+                    //     qlog.EventCategory.connectivity,
+                    //     qlog.ConnectivityEventType.connection_id_updated,
+                    //     {
+                    //         src_old: trace.currentClientCID,
+                    //         src_new: header.dcid,
+                    //     } as qlog.IEventConnectionIDUpdated,
+                    // ]);
+                    this.addEvent(trace, {
+                        time: trace.currentTime,
+                        name: `${EventCategory.connectivity}:${ConnectivityEventType.connection_id_updated}`,
+                        data: {
                             src_old: trace.currentClientCID,
-                            src_new: header.dcid,
-                        } as qlog.IEventConnectionIDUpdated,
-                    ]);
+                            src_new: header.dcid
+                        } as qlog.IEventConnectionIDUpdated
+                    });
 
                     trace.currentClientCID = header.dcid;
                 }
@@ -760,15 +811,23 @@ export class ParserPCAP {
 
                     // ALPN can only be selected by server
                     if (alpns.length === 1 && trace.selectedALPN === undefined) {
-                        this.addTrailingEvent(trace, [
-                            "" + trace.currentTime,
-                            EventCategory.transport,
-                            TransportEventType.parameters_set,
-                            {
+                        // this.addTrailingEvent(trace, [
+                        //     "" + trace.currentTime,
+                        //     EventCategory.transport,
+                        //     TransportEventType.parameters_set,
+                        //     {
+                        //         owner: "remote",
+                        //         alpn: alpns[0],
+                        //     } as IEventTransportParametersSet,
+                        // ]);
+                        this.addTrailingEvent(trace, {
+                            time: trace.currentTime,
+                            name: `${EventCategory.transport}:${TransportEventType.parameters_set}`,
+                            data: {
                                 owner: "remote",
                                 alpn: alpns[0],
-                            } as IEventTransportParametersSet,
-                        ]);
+                            } as IEventTransportParametersSet
+                        });
                         trace.selectedALPN = alpns[0];
                     }
                     return ParserPCAP.convertCryptoFrame(rawFrame);
@@ -796,14 +855,21 @@ export class ParserPCAP {
                     return ParserPCAP.convertPathResponseFrame(rawFrame);
                 case QUICFrameTypeName.connection_close:
                     // Event should only be added after PacketReceived/PacketSent event
-                    this.addTrailingEvent(trace, [
-                        trace.currentTime,
-                        EventCategory.connectivity,
-                        ConnectivityEventType.connection_state_updated,
-                        {
+                    // this.addTrailingEvent(trace, [
+                    //     trace.currentTime,
+                    //     EventCategory.connectivity,
+                    //     ConnectivityEventType.connection_state_updated,
+                    //     {
+                    //         new: ConnectionState.closed
+                    //     } as IEventConnectionStateUpdated,
+                    // ]);
+                    this.addTrailingEvent(trace, {
+                        time: trace.currentTime,
+                        name: `${EventCategory.connectivity}:${ConnectivityEventType.connection_state_updated}`,
+                        data: {
                             new: ConnectionState.closed
-                        } as IEventConnectionStateUpdated,
-                    ]);
+                        } as IEventConnectionStateUpdated
+                    });
                     return ParserPCAP.convertConnectionCloseFrame(rawFrame);
                 default:
                     if ( parseInt(rawFrame["quic.frame_type"]) === 30 ) { // TODO: handle properly once we update the qlog library
